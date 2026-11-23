@@ -33,7 +33,11 @@ public sealed record SplitCancelDecision(
 /// The classified answers for every split in one cancel request, in request order.
 /// </summary>
 /// <param name="Decisions">One decision per distinct split correlation requested.</param>
-/// <param name="HttpStatusCode">Gatekeeper's HTTP status, or <c>null</c> when no answer arrived.</param>
+/// <param name="HttpStatusCode">
+/// Gatekeeper's HTTP status, or <c>null</c> when no answer arrived. When the request was sent as
+/// several calls (more than 100 splits), the first non-200 status among them, otherwise 200 if any
+/// call was answered. Per-split results are in <see cref="Decisions"/>.
+/// </param>
 public sealed record CancelSplitsResult(
     IReadOnlyList<SplitCancelDecision> Decisions,
     int? HttpStatusCode)

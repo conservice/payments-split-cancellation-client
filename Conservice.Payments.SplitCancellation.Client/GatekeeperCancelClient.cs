@@ -13,6 +13,12 @@ namespace Conservice.Payments.SplitCancellation.Client;
 internal sealed class GatekeeperCancelClient : IGatekeeperCancelClient
 {
     internal const string CancelBatchPath = "tasks/cancel-batch";
+
+    /// <summary>
+    /// Gatekeeper's limit on distinct correlations per <c>tasks/cancel-batch</c> call
+    /// (<c>TaskCancellation.MaxBatchSize</c>). Larger requests are sent in chunks of this size.
+    /// </summary>
+    internal const int MaxSplitsPerRequest = 100;
     private const int MaxBodyLengthInMessage = 500;
 
     // Web defaults match ASP.NET Core: camelCase out, case-insensitive in. The enum converter
@@ -80,6 +86,34 @@ internal sealed class GatekeeperCancelClient : IGatekeeperCancelClient
                 "No access token for Gatekeeper.");
         }
 
+        // Gatekeeper rejects more than MaxSplitsPerRequest distinct correlations with a 400, which
+        // would classify every split as Terminal. Send in chunks instead; each chunk's answer
+        // classifies only its own splits.
+        var decisions = new List<SplitCancelDecision>(requested.Length);
+        int? firstNonOkStatus = null;
+        var anyOk = false;
+        foreach (var chunk in requested.Chunk(MaxSplitsPerRequest))
+        {
+            var chunkResult = await SendChunkAsync(chunk, token, cancellationToken).ConfigureAwait(false);
+            decisions.AddRange(chunkResult.Decisions);
+            if (chunkResult.HttpStatusCode == (int)HttpStatusCode.OK)
+            {
+                anyOk = true;
+            }
+            else if (chunkResult.HttpStatusCode is not null)
+            {
+                firstNonOkStatus ??= chunkResult.HttpStatusCode;
+            }
+        }
+
+        return new CancelSplitsResult(decisions, firstNonOkStatus ?? (anyOk ? (int)HttpStatusCode.OK : null));
+    }
+
+    private async Task<CancelSplitsResult> SendChunkAsync(
+        Guid[] requested,
+        string token,
+        CancellationToken cancellationToken)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Post, CancelBatchPath)
         {
             Content = JsonContent.Create(new CancelBatchRequest(requested), options: JsonOptions),

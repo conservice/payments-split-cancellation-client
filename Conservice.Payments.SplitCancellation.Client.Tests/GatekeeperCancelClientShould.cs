@@ -276,6 +276,94 @@ public class GatekeeperCancelClientShould
         });
     }
 
+    private static Guid[] SplitsIn(string? body) =>
+        JsonSerializer.Deserialize<CancelBatchRequest>(body!, GatekeeperCancelClient.JsonOptions)!
+            .SplitCorrelations.ToArray();
+
+    // Behaves like Gatekeeper: 400 above 100 splits, otherwise the given outcome for every split.
+    private static StubHttpMessageHandler GatekeeperLike(Func<Guid[], HttpStatusCode>? statusFor = null) =>
+        new(async (request, ct) =>
+        {
+            var splits = SplitsIn(await request.Content!.ReadAsStringAsync(ct));
+            var status = splits.Length > GatekeeperCancelClient.MaxSplitsPerRequest
+                ? HttpStatusCode.BadRequest
+                : statusFor?.Invoke(splits) ?? HttpStatusCode.OK;
+            var body = status == HttpStatusCode.OK
+                ? BatchAnswer(splits.Select(s => (s, 0, "ok")).ToArray())
+                : "{\"title\":\"problem\"}";
+            return new HttpResponseMessage(status) { Content = new StringContent(body) };
+        });
+
+    [Test]
+    public async Task SendOneHundredSplitsInOneCall()
+    {
+        var splits = Enumerable.Range(0, 100).Select(_ => Guid.NewGuid()).ToArray();
+        var handler = GatekeeperLike();
+
+        var result = await CreateClient(handler).CancelSplitsAsync(splits);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(handler.CallCount, Is.EqualTo(1));
+            Assert.That(result.AllConfirmed, Is.True);
+        });
+    }
+
+    [Test]
+    public async Task SendMoreThanOneHundredSplitsInChunksAndKeepRequestOrder()
+    {
+        var splits = Enumerable.Range(0, 101).Select(_ => Guid.NewGuid()).ToArray();
+        var handler = GatekeeperLike();
+
+        var result = await CreateClient(handler).CancelSplitsAsync(splits);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(handler.CallCount, Is.EqualTo(2));
+            Assert.That(handler.RequestBodies.Select(b => SplitsIn(b).Length), Is.EqualTo(new[] { 100, 1 }));
+            Assert.That(result.Decisions.Select(d => d.SplitCorrelationId), Is.EqualTo(splits));
+            Assert.That(result.AllConfirmed, Is.True);
+            Assert.That(result.HttpStatusCode, Is.EqualTo(200));
+        });
+    }
+
+    [Test]
+    public async Task CountDuplicatesOnceWhenChunking()
+    {
+        var splits = Enumerable.Range(0, 100).Select(_ => Guid.NewGuid()).ToArray();
+        var handler = GatekeeperLike();
+
+        var result = await CreateClient(handler).CancelSplitsAsync(splits.Concat(splits));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(handler.CallCount, Is.EqualTo(1));
+            Assert.That(result.Decisions, Has.Count.EqualTo(100));
+        });
+    }
+
+    [Test]
+    public async Task ClassifyOnlyTheFailedChunksSplitsFromItsStatus()
+    {
+        var splits = Enumerable.Range(0, 250).Select(_ => Guid.NewGuid()).ToArray();
+        var secondChunk = splits.Skip(100).Take(100).ToHashSet();
+        var handler = GatekeeperLike(chunk => secondChunk.Contains(chunk[0])
+            ? HttpStatusCode.ServiceUnavailable
+            : HttpStatusCode.OK);
+
+        var result = await CreateClient(handler).CancelSplitsAsync(splits);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(handler.CallCount, Is.EqualTo(3));
+            Assert.That(result.Decisions, Has.Count.EqualTo(250));
+            Assert.That(result.Confirmed.Count(), Is.EqualTo(150));
+            Assert.That(result.Retry.Select(d => d.SplitCorrelationId), Is.EquivalentTo(secondChunk));
+            Assert.That(result.Terminal, Is.Empty);
+            Assert.That(result.HttpStatusCode, Is.EqualTo(503));
+        });
+    }
+
     [Test]
     public void RejectAnEmptyRequest()
     {

@@ -12,7 +12,9 @@ namespace Conservice.Payments.SplitCancellation.Client;
 public interface IGatekeeperCancelClient
 {
     /// <summary>
-    /// Cancels the given splits. Duplicate correlations are sent once.
+    /// Cancels the given splits. Duplicate correlations are sent once. Gatekeeper accepts at most
+    /// 100 splits per call, so a larger request is sent as several calls of up to 100; each call's
+    /// answer classifies only its own splits, and the decisions come back in request order.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="splitCorrelations"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="splitCorrelations"/> is empty.</exception>

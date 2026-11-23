@@ -67,7 +67,10 @@ Content-Type: application/json
 { "splitCorrelations": [ "3f2b…", "9c1d…" ] }
 ```
 
-Duplicate split correlations are sent once. A 200 answer has one result per split:
+Duplicate split correlations are sent once. Gatekeeper accepts at most 100 distinct split
+correlations per call (`TaskCancellation.MaxBatchSize`) and answers 400 above that, so the client
+sends a larger request as several calls of up to 100 and merges the decisions in request order.
+Each call's answer classifies only its own splits. A 200 answer has one result per split:
 
 ```json
 {
