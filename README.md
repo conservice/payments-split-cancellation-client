@@ -19,12 +19,12 @@ payments-automation.
 
 - **Today** it talks to the current Gatekeeper (owned by OPA). Its outcome numbers mirror
   `Gatekeeper/Components/TaskCancellation.cs` on Gatekeeper `main` (values 0–8).
-- **Next**, payments is building its own Gatekeeper, using the current one as reference. The new
-  Gatekeeper references this package for `SplitCancellationOutcome` and the `cancel-batch` types
-  instead of defining its own, so there is one definition. A new outcome is added here first, with
+- **Next**, payments is building its own gatekeeper, **IVR-Gatekeeper**, kept separate from OPA's
+  and using it as reference. IVR-Gatekeeper references this package for `SplitCancellationOutcome`
+  and the `cancel-batch` types instead of defining its own, so there is one definition. A new outcome is added here first, with
   its classification, and the tests here fail until it has one.
-- The new Gatekeeper is expected to keep the `cancel-batch` shape and the outcome numbers, so the
-  client works against both Gatekeepers during the move.
+- IVR-Gatekeeper is expected to keep the `cancel-batch` shape and the outcome numbers, so the
+  client works against both gatekeepers during the move.
 
 ## Why this exists
 
@@ -211,13 +211,13 @@ every outcome this version knows.
 | copa-eft | Replace its own outcome enum and cancel DTOs with this package. |
 | portal-api | Replace its own outcome enum and cancel DTOs with this package. |
 | Packager | Decision pending: adopt the package (and move to `cancel-batch`) or leave it until decommissioning (M-05). |
-| Current Gatekeeper (OPA) | No change. This package mirrors its outcomes until lanes move to the new Gatekeeper. |
-| New payments Gatekeeper | References this package for `SplitCancellationOutcome` and the `cancel-batch` types; keeps no copy of its own. |
+| Current Gatekeeper (OPA) | No change. This package mirrors its outcomes until lanes move to IVR-Gatekeeper. |
+| IVR-Gatekeeper (payments) | References this package for `SplitCancellationOutcome` and the `cancel-batch` types; keeps no copy of its own. |
 
 ## Adding an outcome
 
-The new Gatekeeper takes its outcomes from this package, so an outcome is added here first and
-Gatekeeper upgrades to the new version. While lanes still call the current Gatekeeper, mirror any
+IVR-Gatekeeper takes its outcomes from this package, so an outcome is added here first and
+IVR-Gatekeeper upgrades to the new version. While lanes still call the current Gatekeeper, mirror any
 value it adds the same way.
 
 1. Append the value to `SplitCancellationOutcome` with the next number. Never renumber.
