@@ -11,6 +11,21 @@ library that services reference.
 
 Story: **[CC-Lane] CX-04 — Shared Gatekeeper cancel client and outcome contract for all lanes.**
 
+## Where the contract lives
+
+This package is the **single source** of the Gatekeeper cancel contract: the outcome enum, the
+`cancel-batch` request and response types, and the classification. It is owned by
+payments-automation.
+
+- **Today** it talks to the current Gatekeeper (owned by OPA). Its outcome numbers mirror
+  `Gatekeeper/Components/TaskCancellation.cs` on Gatekeeper `main` (values 0–8).
+- **Next**, payments is building its own Gatekeeper, using the current one as reference. The new
+  Gatekeeper references this package for `SplitCancellationOutcome` and the `cancel-batch` types
+  instead of defining its own, so there is one definition. A new outcome is added here first, with
+  its classification, and the tests here fail until it has one.
+- The new Gatekeeper is expected to keep the `cancel-batch` shape and the outcome numbers, so the
+  client works against both Gatekeepers during the move.
+
 ## Why this exists
 
 Three services (copa-eft, portal-api and the Packager) each wrote their own code to cancel
@@ -196,11 +211,16 @@ every outcome this version knows.
 | copa-eft | Replace its own outcome enum and cancel DTOs with this package. |
 | portal-api | Replace its own outcome enum and cancel DTOs with this package. |
 | Packager | Decision pending: adopt the package (and move to `cancel-batch`) or leave it until decommissioning (M-05). |
-| payments-gatekeeper | Add a test that fails when Gatekeeper's `SplitCancellationOutcome` has a value this package does not classify. |
+| Current Gatekeeper (OPA) | No change. This package mirrors its outcomes until lanes move to the new Gatekeeper. |
+| New payments Gatekeeper | References this package for `SplitCancellationOutcome` and the `cancel-batch` types; keeps no copy of its own. |
 
-## Adding an outcome when Gatekeeper adds one
+## Adding an outcome
 
-1. Append the value to `SplitCancellationOutcome` with the number Gatekeeper uses. Never renumber.
+The new Gatekeeper takes its outcomes from this package, so an outcome is added here first and
+Gatekeeper upgrades to the new version. While lanes still call the current Gatekeeper, mirror any
+value it adds the same way.
+
+1. Append the value to `SplitCancellationOutcome` with the next number. Never renumber.
 2. Classify it in `CancelOutcomeClassifier`. `ClassifyEveryOutcomeExplicitly` fails until you do.
 3. Add it to the pinned numbers in `KeepTheWireNumbersStable`.
 4. Bump the minor version and release. Consumers that have not upgraded classify the new value as
