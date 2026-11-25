@@ -1,0 +1,15 @@
+name: Upload Package
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]*'
+
+jobs:
+  build-nuget:
+    uses: conservice/infrastructure-github-actions-workflows/.github/workflows/dotnet-nuget-build-deploy.yaml@main
+    with:
+      csproj_file: Conservice.Payments.SplitCancellation.Client.csproj
+      package_name: Conservice.Payments.SplitCancellation.Client
+      working_directory: Conservice.Payments.SplitCancellation.Client
+    secrets: inherit

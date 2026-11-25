@@ -1,0 +1,16 @@
+name: Pull Request
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '.github/**'
+
+jobs:
+  pull-request:
+    uses: conservice/infrastructure-github-actions-workflows/.github/workflows/dotnet-unit-tests.yaml@main
+    with:
+      UNIT_TEST_PATH: "./Conservice.Payments.SplitCancellation.Client.Tests/Conservice.Payments.SplitCancellation.Client.Tests.csproj"
+    secrets: inherit
