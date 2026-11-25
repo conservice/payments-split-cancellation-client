@@ -80,7 +80,7 @@ public class CancelOutcomeClassifierShould
         Assert.That(default(CancelClassification), Is.EqualTo(CancelClassification.Retry));
     }
 
-    [TestCase(HttpStatusCode.BadRequest, CancelClassification.Terminal)]
+    [TestCase(HttpStatusCode.BadRequest, CancelClassification.Retry)]
     [TestCase(HttpStatusCode.InternalServerError, CancelClassification.Retry)]
     [TestCase(HttpStatusCode.BadGateway, CancelClassification.Retry)]
     [TestCase(HttpStatusCode.ServiceUnavailable, CancelClassification.Retry)]
@@ -91,5 +91,19 @@ public class CancelOutcomeClassifierShould
     public void ClassifyBatchFailureStatuses(HttpStatusCode status, CancelClassification expected)
     {
         Assert.That(CancelOutcomeClassifier.ClassifyBatchFailureStatus(status), Is.EqualTo(expected));
+    }
+
+    [TestCase(HttpStatusCode.BadRequest, true)]
+    [TestCase(HttpStatusCode.Unauthorized, true)]
+    [TestCase(HttpStatusCode.Forbidden, true)]
+    [TestCase(HttpStatusCode.NotFound, true)]
+    [TestCase(HttpStatusCode.InternalServerError, false)]
+    [TestCase(HttpStatusCode.BadGateway, false)]
+    [TestCase(HttpStatusCode.ServiceUnavailable, false)]
+    [TestCase(HttpStatusCode.TooManyRequests, false)]
+    [TestCase(HttpStatusCode.Conflict, false)]
+    public void FlagConfigurationAndContractFaults(HttpStatusCode status, bool expected)
+    {
+        Assert.That(CancelOutcomeClassifier.IsConfigurationOrContractFault(status), Is.EqualTo(expected));
     }
 }

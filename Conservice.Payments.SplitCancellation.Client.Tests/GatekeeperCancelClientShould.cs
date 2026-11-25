@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Conservice.Payments.SplitCancellation.Client.Classification;
 using Conservice.Payments.SplitCancellation.Client.Contracts;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Conservice.Payments.SplitCancellation.Client.Tests;
@@ -155,7 +156,8 @@ public class GatekeeperCancelClientShould
     [TestCase(HttpStatusCode.ServiceUnavailable, CancelClassification.Retry)]
     [TestCase(HttpStatusCode.Unauthorized, CancelClassification.Retry)]
     [TestCase(HttpStatusCode.NotFound, CancelClassification.Retry)]
-    [TestCase(HttpStatusCode.BadRequest, CancelClassification.Terminal)]
+    [TestCase(HttpStatusCode.Forbidden, CancelClassification.Retry)]
+    [TestCase(HttpStatusCode.BadRequest, CancelClassification.Retry)]
     public async Task ClassifyEverySplitFromANonOkStatus(HttpStatusCode status, CancelClassification expected)
     {
         var handler = StubHttpMessageHandler.Answering(status, "{\"title\":\"problem\"}");
@@ -169,6 +171,26 @@ public class GatekeeperCancelClientShould
             Assert.That(result.Decisions.Select(d => d.Outcome), Is.All.Null);
             Assert.That(result.Decisions[0].Message, Does.Contain(((int)status).ToString()).And.Contain("problem"));
         });
+    }
+
+    [TestCase(HttpStatusCode.BadRequest, LogLevel.Error)]
+    [TestCase(HttpStatusCode.Unauthorized, LogLevel.Error)]
+    [TestCase(HttpStatusCode.Forbidden, LogLevel.Error)]
+    [TestCase(HttpStatusCode.NotFound, LogLevel.Error)]
+    [TestCase(HttpStatusCode.InternalServerError, LogLevel.Warning)]
+    [TestCase(HttpStatusCode.ServiceUnavailable, LogLevel.Warning)]
+    public async Task LogANonOkStatusAtErrorOnlyWhenItWillNotClearOnItsOwn(HttpStatusCode status, LogLevel expected)
+    {
+        var handler = StubHttpMessageHandler.Answering(status, "{\"title\":\"problem\"}");
+        var logger = new CapturingLogger<GatekeeperCancelClient>();
+        var client = new GatekeeperCancelClient(
+            new HttpClient(handler) { BaseAddress = BaseAddress },
+            StubTokenProvider.Returning("token-123"),
+            logger);
+
+        await client.CancelSplitAsync(Guid.NewGuid());
+
+        Assert.That(logger.Levels, Is.EqualTo(new[] { expected }));
     }
 
     [Test]

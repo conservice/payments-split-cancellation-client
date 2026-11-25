@@ -49,9 +49,27 @@ public static class CancelOutcomeClassifier
 
     /// <summary>
     /// Classifies a non-200 answer from <c>tasks/cancel-batch</c>, which applies to every split
-    /// in the request. 400 means Gatekeeper rejected the request itself, so sending it again
-    /// cannot succeed; anything else (5xx, auth, gateway, unknown) may succeed later.
+    /// in the request. Every non-200 status classifies as <see cref="CancelClassification.Retry"/>:
+    /// the answer says nothing about the splits' state, and the tasks behind it are most likely
+    /// still cancellable.
     /// </summary>
+    /// <remarks>
+    /// This includes 400. Gatekeeper answers 400 only for an empty list or more than 100 distinct
+    /// splits, and the client sends neither, so a 400 means a contract break or a proxy rejected
+    /// the request, not that the cancel can never be confirmed. See
+    /// <see cref="IsConfigurationOrContractFault"/> for the statuses that are logged as errors.
+    /// </remarks>
     public static CancelClassification ClassifyBatchFailureStatus(HttpStatusCode statusCode) =>
-        statusCode == HttpStatusCode.BadRequest ? CancelClassification.Terminal : CancelClassification.Retry;
+        CancelClassification.Retry;
+
+    /// <summary>
+    /// Whether a non-200 answer points to a fault that asking again will not fix on its own:
+    /// 400 (contract break or proxy), 401 or 403 (wrong audience or role), 404 (wrong base address).
+    /// Splits still classify as Retry, but the client logs these at Error so they are noticed.
+    /// </summary>
+    public static bool IsConfigurationOrContractFault(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.BadRequest
+            or HttpStatusCode.Unauthorized
+            or HttpStatusCode.Forbidden
+            or HttpStatusCode.NotFound;
 }

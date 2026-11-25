@@ -86,9 +86,8 @@ internal sealed class GatekeeperCancelClient : IGatekeeperCancelClient
                 "No access token for Gatekeeper.");
         }
 
-        // Gatekeeper rejects more than MaxSplitsPerRequest distinct correlations with a 400, which
-        // would classify every split as Terminal. Send in chunks instead; each chunk's answer
-        // classifies only its own splits.
+        // Gatekeeper rejects more than MaxSplitsPerRequest distinct correlations with a 400. Send in
+        // chunks instead; each chunk's answer classifies only its own splits.
         var decisions = new List<SplitCancelDecision>(requested.Length);
         int? firstNonOkStatus = null;
         var anyOk = false;
@@ -145,8 +144,12 @@ internal sealed class GatekeeperCancelClient : IGatekeeperCancelClient
             {
                 var body = await ReadBodyForMessageAsync(response, cancellationToken).ConfigureAwait(false);
                 var classification = CancelOutcomeClassifier.ClassifyBatchFailureStatus(response.StatusCode);
+                // 400/401/403/404 retry forever until someone fixes the contract or configuration,
+                // so they are logged at Error; transient statuses (5xx, 429, ...) at Warning.
                 _logger.Log(
-                    classification == CancelClassification.Terminal ? LogLevel.Error : LogLevel.Warning,
+                    CancelOutcomeClassifier.IsConfigurationOrContractFault(response.StatusCode)
+                        ? LogLevel.Error
+                        : LogLevel.Warning,
                     "Gatekeeper answered the cancel request with a non-200 status.{Data.HttpStatus}{Data.Classification}{Data.SplitCount}{Data.Body}",
                     status, classification, requested.Length, body);
                 return CancelSplitsResult.ForAll(requested, classification, status,

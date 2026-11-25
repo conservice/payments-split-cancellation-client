@@ -121,12 +121,23 @@ answer for anything the client does not recognise, so an unknown answer can neve
 | `CancelRegistered` | 8 | Confirmed |
 | An outcome number this version does not know | — | Retry |
 | A split missing from Gatekeeper's answer | — | Retry |
-| HTTP 400 for the whole request | — | Terminal |
-| Any other non-200 status, network failure, timeout, unreadable body, no access token | — | Retry |
+| Any non-200 status for the whole request (including 400), network failure, timeout, unreadable body, no access token | — | Retry |
+
+A whole-request 400 is Retry, not Terminal. The client never sends a request Gatekeeper's own
+validation rejects (an empty list or more than 100 splits), so a 400 means a contract break or a
+proxy rejected the call. It says nothing about the splits, which are most likely still cancellable.
+Terminal therefore always comes with a Gatekeeper `Outcome` (`Completed` or `ValidationFailed`).
 
 The client does not throw for anything Gatekeeper or the network does. It throws only for invalid
-arguments (null or empty list) and when the caller's cancellation token is cancelled. Terminal
-answers are logged as errors and unknown outcomes as warnings, so they show up in monitoring.
+arguments (null or empty list) and when the caller's cancellation token is cancelled. These are
+logged as errors, so they show up in monitoring:
+
+- Terminal answers.
+- HTTP 400, 401, 403 and 404 for the whole request. They classify as Retry but will not clear on
+  their own: a contract break, a wrong audience or role, or a wrong `BaseAddress`.
+- No access token, or the token provider throwing.
+
+Unknown outcomes and transient failures (5xx, network, timeout) are logged as warnings.
 
 ## Usage
 
